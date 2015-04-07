@@ -1,6 +1,7 @@
 #include <alpm.h>
 
 #include <iostream>
+#include <fstream>
 #include <cstdlib>
 #include <unordered_map>
 #include <unordered_set>
@@ -64,14 +65,15 @@ Graph construct_graph(const DependData &depend_data,
       try {
         add_edge(source, pkg2number.at(dependency), graph);
       } catch (std::out_of_range &) {
-        if (depend_data.pkg2provided_by.find(dependency) == depend_data.pkg2provided_by.end()) {
+        if (depend_data.pkg2provided_by.find(dependency) ==
+            depend_data.pkg2provided_by.end()) {
           if (printIfDependencyIsMissing) {
             std::cerr << dependency << ", a dependency of "
                       << depend_data.vertex2package(source)
                       << " could not be found!\n";
           }
         } else {
-	  const auto &resolves_to = depend_data.pkg2provided_by.at(dependency);
+          const auto &resolves_to = depend_data.pkg2provided_by.at(dependency);
           for (const auto &package : resolves_to) {
             add_edge(source, pkg2number.at(package), graph);
           }
@@ -121,7 +123,7 @@ void collect_package_information(alpm_handle_t *handle,
   const auto repos = {"core",  "platform", "desktop", "apps",
                       "games", "kde-next", "extra",   "lib32"};
   for (const auto &repo : repos)
-        alpm_register_syncdb(handle, repo, ALPM_SIG_USE_DEFAULT);
+    alpm_register_syncdb(handle, repo, ALPM_SIG_USE_DEFAULT);
   alpm_list_t *dblist = alpm_get_syncdbs(handle);
   if (!dblist)
     std::cerr << "No dblists?!?" << std::endl;
@@ -153,34 +155,36 @@ void collect_package_information(alpm_handle_t *handle,
           [&depend_data, &store_depends](alpm_list_t *list_elem) {
             store_depends(depend_data.pkg2optdeps, list_elem);
           });
-      helper::alpm_list_foreach(alpm_pkg_get_provides(pkg),
-                                [&pkgname, &depend_data](alpm_list_t *list_elem) {
-        auto providee = reinterpret_cast<alpm_depend_t *>(list_elem->data);
-        std::string providee_name = providee->name;
-        depend_data.pkg2provided_by[providee_name].push_back(pkgname);
-      });
+      helper::alpm_list_foreach(
+          alpm_pkg_get_provides(pkg),
+          [&pkgname, &depend_data](alpm_list_t *list_elem) {
+            auto providee = reinterpret_cast<alpm_depend_t *>(list_elem->data);
+            std::string providee_name = providee->name;
+            depend_data.pkg2provided_by[providee_name].push_back(pkgname);
+          });
     }
   }
 }
 
-void handle_cycle(const bool notifyCyclic, Graph& graph, const DependData& depend_data) {
-    auto has_cycle = false;
-    using EdgeStorage = std::vector<Graph::edge_descriptor>;
-    do {
-      has_cycle = false;
-      auto edge_storage = EdgeStorage{};
-      cycle_detector<EdgeStorage> vis(has_cycle, edge_storage);
-      depth_first_search(graph, visitor(vis));
-      if (has_cycle) {
-        auto edge = edge_storage[0];
-        if (notifyCyclic) {
-          std::cout << "Breaking cyclic dependency by removing edge from "
-                    << depend_data.vertex2package(source(edge, graph)) << " to "
-                    << depend_data.vertex2package(target(edge, graph)) << "\n";
-        }
-        graph.remove_edge(edge);
+void handle_cycle(const bool notifyCyclic, Graph &graph,
+                  const DependData &depend_data) {
+  auto has_cycle = false;
+  using EdgeStorage = std::vector<Graph::edge_descriptor>;
+  do {
+    has_cycle = false;
+    auto edge_storage = EdgeStorage{};
+    cycle_detector<EdgeStorage> vis(has_cycle, edge_storage);
+    depth_first_search(graph, visitor(vis));
+    if (has_cycle) {
+      auto edge = edge_storage[0];
+      if (notifyCyclic) {
+        std::cout << "Breaking cyclic dependency by removing edge from "
+                  << depend_data.vertex2package(source(edge, graph)) << " to "
+                  << depend_data.vertex2package(target(edge, graph)) << "\n";
       }
-    } while (has_cycle);
+      graph.remove_edge(edge);
+    }
+  } while (has_cycle);
 }
 
 int main(int argc, char *argv[]) {
@@ -206,13 +210,25 @@ int main(int argc, char *argv[]) {
         "u", "unresolvable",
         "Print a warning when an unresolvable dependency is detected", cmd,
         false);
+    TCLAP::ValueArg<std::string> packageFileSwitch(
+        "f", "file", "A file listing the packages which should be ordered",
+        false, "", "packgages.txt", cmd);
 
     cmd.parse(argc, argv);
     bool notifyCyclic = cyclicSwitch.getValue();
     bool notifyUnresolvable = unresolvableSwitch.getValue();
     std::vector<std::string> package_list = packageListSwitch.getValue();
-    const auto order_those_packages = std::unordered_set<std::string>{
+    std::string package_file_name = packageFileSwitch.getValue();
+
+    auto order_those_packages = std::unordered_set<std::string>{
         package_list.begin(), package_list.end()};
+    if (package_file_name != "") {
+      std::ifstream package_file(package_file_name);
+      std::copy(
+          std::istream_iterator<std::string>(package_file),
+          std::istream_iterator<std::string>(),
+          std::inserter(order_those_packages, order_those_packages.begin()));
+    }
 
     auto depend_data = DependData{};
     alpm_errno_t err;
