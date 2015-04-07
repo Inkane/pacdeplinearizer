@@ -224,10 +224,14 @@ int main(int argc, char *argv[]) {
         package_list.begin(), package_list.end()};
     if (package_file_name != "") {
       std::ifstream package_file(package_file_name);
-      std::copy(
-          std::istream_iterator<std::string>(package_file),
-          std::istream_iterator<std::string>(),
-          std::inserter(order_those_packages, order_those_packages.begin()));
+      if (!package_file) {
+        std::cerr << "Could not open file " << package_file_name << std::endl;
+      } else {
+        std::copy(
+            std::istream_iterator<std::string>(package_file),
+            std::istream_iterator<std::string>(),
+            std::inserter(order_those_packages, order_those_packages.begin()));
+      }
     }
 
     auto depend_data = DependData{};
