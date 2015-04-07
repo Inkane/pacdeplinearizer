@@ -35,3 +35,5 @@ add_definitions(-std=c++11)
 
 add_executable (pacdeplinearizer depend.cpp)
 target_link_libraries( pacdeplinearizer ${ALPM_LIBS})
+
+install(TARGETS pacdeplinearizer DESTINATION bin)
